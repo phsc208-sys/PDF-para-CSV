@@ -9,14 +9,14 @@ async function carregarPDF(input) {
     // Reset Geral
     pagAtual = 1;
     regioes = [];
-    planilhasSalvas = []; // Zera o Excel
+    planilhasSalvas = []; 
     atualizarContadorPlanilhas();
     
-    document.getElementById('pagInfo').innerText = `1/${totalPags}`;
+    // Atualiza o total de páginas na tela
+    const totalEl = document.getElementById('totalPags');
+    if(totalEl) totalEl.innerText = totalPags;
     
-    // Limpa UI
     limparTudo();
-    
     await carregarPagina(pagAtual);
 }
 
@@ -29,8 +29,25 @@ async function mudarPag(delta) {
     }
 }
 
+// FUNÇÃO RESTAURADA: Ir para página ao digitar
+async function irParaPagina() {
+    if (!pdfDoc) return;
+    
+    const input = document.getElementById('pagInput');
+    let valor = parseInt(input.value);
+
+    if (valor >= 1 && valor <= totalPags) {
+        pagAtual = valor;
+        await carregarPagina(pagAtual);
+    } else {
+        input.value = pagAtual; // Se inválido, volta
+    }
+}
+
 async function carregarPagina(num) {
-    document.getElementById('pagInfo').innerText = `${num}/${totalPags}`;
+    // Atualiza o input com o número da página
+    const input = document.getElementById('pagInput');
+    if(input) input.value = num;
     
     const page = await pdfDoc.getPage(num);
     const viewport = page.getViewport({ scale: 1.0 });
@@ -38,8 +55,13 @@ async function carregarPagina(num) {
     const content = await page.getTextContent();
 
     const ws = document.getElementById('workspace');
+    
+    // Correção Bootstrap: Remove d-flex para esconder msg
     const msg = document.getElementById('msgInicial');
-    if(msg) msg.style.display = 'none';
+    if(msg) {
+        msg.classList.remove('d-flex');
+        msg.style.display = 'none';
+    }
 
     let container = document.getElementById('page-container');
     if (!container) {

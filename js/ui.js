@@ -3,8 +3,13 @@
 // 1. FILTRO VISUAL
 function recalcularLinhas() {
     if (!itensPaginaAtual || itensPaginaAtual.length === 0) return;
-    const tol = parseInt(document.getElementById('tolerancia').value);
-    document.getElementById('tolVal').innerText = tol + "px";
+    
+    const inputTol = document.getElementById('tolerancia');
+    let tol = parseInt(inputTol.value);
+    
+    // Validação
+    if(isNaN(tol) || tol < 2) tol = 2;
+    document.getElementById('tolerancia').value = tol;
 
     let mostrarTudo = regioes.length === 0;
 
@@ -49,6 +54,17 @@ function recalcularLinhas() {
     desenharWorkspace(linhasVisuais);
 }
 
+// 2. FUNÇÃO NOVA: Botões + e - da Tolerância
+function ajustarTolerancia(delta) {
+    const input = document.getElementById('tolerancia');
+    let val = parseInt(input.value) || 10;
+    val += delta;
+    if(val < 2) val = 2;
+    if(val > 100) val = 100;
+    input.value = val;
+    recalcularLinhas();
+}
+
 function desenharWorkspace(linhas) {
     const container = document.getElementById('page-container');
     if(!container) return;
@@ -81,11 +97,32 @@ function desenharWorkspace(linhas) {
     });
 }
 
-// 2. INTERAÇÃO E CLIQUES
+// 3. INTERAÇÃO (Botões de Início/Fim sem perder estilo)
 function ativarModo(modo) {
     modoFerramenta = modo;
-    document.getElementById('btnTop').className = modo==='top' ? 'btn-tool active-top' : 'btn-tool';
-    document.getElementById('btnBottom').className = modo==='bottom' ? 'btn-tool active-bottom' : 'btn-tool';
+    
+    const btnTop = document.getElementById('btnTop');
+    const btnBottom = document.getElementById('btnBottom');
+
+    // Reset visual
+    btnTop.classList.remove('btn-success');
+    btnTop.classList.add('btn-outline-success');
+    
+    btnBottom.classList.remove('btn-danger');
+    btnBottom.classList.add('btn-outline-danger');
+
+    // Ativa visualmente
+    if (modo === 'top') {
+        btnTop.classList.remove('btn-outline-success');
+        btnTop.classList.add('btn-success');
+        document.getElementById('status').innerText = "Modo INÍCIO: Clique para marcar onde a tabela começa.";
+    } else if (modo === 'bottom') {
+        btnBottom.classList.remove('btn-outline-danger');
+        btnBottom.classList.add('btn-danger');
+        document.getElementById('status').innerText = "Modo FIM: Clique para marcar onde a tabela termina.";
+    } else {
+        document.getElementById('status').innerText = "Modo COLUNA: Clique para adicionar divisórias verticais.";
+    }
 }
 
 function cliqueWorkspace(e) {
@@ -104,7 +141,7 @@ function cliqueWorkspace(e) {
             ultima.inicio = { pag: pagAtual, y: y };
         }
         modoFerramenta = null;
-        document.getElementById('btnTop').className = 'btn-tool';
+        ativarModo(null); // Reseta botões
         desenharLimites(); recalcularLinhas();
     } 
     else if (modoFerramenta === 'bottom') {
@@ -115,11 +152,10 @@ function cliqueWorkspace(e) {
             alert("Defina o Início primeiro!");
         }
         modoFerramenta = null;
-        document.getElementById('btnBottom').className = 'btn-tool';
+        ativarModo(null); // Reseta botões
         desenharLimites(); recalcularLinhas();
     } 
     else {
-        // Coluna (com proteção de duplo clique)
         let perto = false;
         document.querySelectorAll('.col-sep').forEach(c => { if(Math.abs(parseFloat(c.style.left)-x)<10) perto=true; });
         if(!perto) {
@@ -142,7 +178,7 @@ function desenharLimites() {
             let l = document.createElement('div');
             l.className = 'limit-line limit-top';
             l.style.top = reg.inicio.y + "px";
-            l.innerHTML = `<span class="limit-tag" style="background:#27ae60">INÍCIO ${reg.id}</span>`;
+            l.innerHTML = `<span class="limit-tag" style="background:#198754">INÍCIO ${reg.id}</span>`;
             l.onclick = (e) => { e.stopPropagation(); if(confirm("Apagar bloco?")) { regioes.splice(index,1); desenharLimites(); recalcularLinhas(); } };
             container.appendChild(l);
         }
@@ -150,7 +186,7 @@ function desenharLimites() {
             let l = document.createElement('div');
             l.className = 'limit-line limit-bottom';
             l.style.top = reg.fim.y + "px";
-            l.innerHTML = `<span class="limit-tag" style="background:#e74c3c">FIM ${reg.id}</span>`;
+            l.innerHTML = `<span class="limit-tag" style="background:#dc3545">FIM ${reg.id}</span>`;
             l.onclick = (e) => { e.stopPropagation(); if(confirm("Apagar bloco?")) { regioes.splice(index,1); desenharLimites(); recalcularLinhas(); } };
             container.appendChild(l);
         }
@@ -164,31 +200,18 @@ function limparTudo(limparRegioes = true) {
     recalcularLinhas();
 }
 
-// --- FUNÇÃO DE SALVAR PLANILHA (NOVA) ---
 async function salvarPlanilhaAtual() {
-    // Extrai os dados da configuração atual
     const dados = await extrairDadosGerais();
-    
     if (!dados || dados.dados.length === 0) {
         alert("A planilha atual está vazia ou não foi configurada corretamente.");
         return;
     }
-
     const nome = prompt("Nome desta planilha (aba do Excel):", `Planilha ${planilhasSalvas.length + 1}`);
     if (!nome) return;
-
-    // Salva na memória
-    planilhasSalvas.push({
-        nome: nome,
-        dados: dados.dados, // Matriz de dados
-        colunas: dados.numColunas
-    });
-
+    planilhasSalvas.push({ nome: nome, dados: dados.dados, colunas: dados.numColunas });
     atualizarContadorPlanilhas();
-    
-    // Limpa a tela para a próxima planilha
     if(confirm("Planilha salva! Deseja limpar a tela para configurar a próxima?")) {
-        limparTudo(true); // Limpa colunas e regiões
+        limparTudo(true);
     }
 }
 
@@ -196,7 +219,7 @@ function atualizarContadorPlanilhas() {
     const div = document.getElementById('contadorPlanilhas');
     if (planilhasSalvas.length > 0) {
         div.style.display = 'block';
-        div.innerText = `${planilhasSalvas.length} Planilha(s) Pronta(s)`;
+        div.querySelector('span').innerText = `${planilhasSalvas.length} Planilha(s)`;
     } else {
         div.style.display = 'none';
     }

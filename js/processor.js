@@ -1,25 +1,27 @@
 // --- PROCESSAMENTO E EXPORTAÇÃO ---
 
-// Função auxiliar acessível pelo ui.js
 window.extrairDadosGerais = extrairDadosGerais;
 
 async function extrairDadosGerais() {
     if(!pdfDoc) return null;
     
-    // Coleta Colunas
     let cortes = [];
     document.querySelectorAll('.col-sep').forEach(el => cortes.push(parseFloat(el.style.left) / escala));
     cortes.sort((a,b) => a - b);
     
     const tol = parseInt(document.getElementById('tolerancia').value);
-    const colarSemEspaco = document.getElementById('checkColar').checked;
     
-    // Se não tiver regiões, cria padrão (tudo)
+    // Proteção para checkbox
+    const elColar = document.getElementById('checkColar');
+    const colarSemEspaco = elColar ? elColar.checked : true;
+    
+    // Proteção: Assume FALSE se o checkbox não existir no HTML
+    const elLimpar = document.getElementById('checkLimparVazias');
+    const limparVazias = elLimpar ? elLimpar.checked : false; 
+    
     let regioesAtivas = regioes.length > 0 ? regioes : [{inicio: null, fim: null}];
-    
     let dadosFinais = [];
 
-    // Processa PÁGINA A PÁGINA
     for(let p=1; p<=totalPags; p++) {
         const page = await pdfDoc.getPage(p);
         const content = await page.getTextContent();
@@ -41,7 +43,6 @@ async function extrairDadosGerais() {
             if (itensRegiao.length === 0) continue;
             itensRegiao.sort((a,b) => b.y - a.y);
 
-            // Agrupa Linhas
             let grupo = { base: itensRegiao[0].y, itens: [itensRegiao[0]] };
             let grupos = [];
             for(let i=1; i<itensRegiao.length; i++) {
@@ -52,7 +53,6 @@ async function extrairDadosGerais() {
             }
             grupos.push(grupo);
 
-            // Corta
             grupos.forEach(grp => {
                 let cols = []; for(let k=0; k<=cortes.length; k++) cols.push([]);
                 grp.itens.forEach(it => {
@@ -90,10 +90,19 @@ async function extrairDadosGerais() {
         }
     }
 
-    return { 
-        dados: unirLinhasQuebradas(dadosFinais, colarSemEspaco), 
-        numColunas: cortes.length+1 
-    };
+    let resultado = unirLinhasQuebradas(dadosFinais, colarSemEspaco);
+
+    if (limparVazias && resultado.length > 0) {
+        let numCols = resultado[0].length;
+        let colVazia = new Array(numCols).fill(true);
+        resultado.forEach(linha => {
+            linha.forEach((celula, idx) => { if (celula && celula.trim() !== "") colVazia[idx] = false; });
+        });
+        let resultadoLimpo = resultado.map(linha => linha.filter((_, idx) => !colVazia[idx]));
+        return { dados: resultadoLimpo, numColunas: resultadoLimpo[0] ? resultadoLimpo[0].length : 0 };
+    }
+
+    return { dados: resultado, numColunas: cortes.length+1 };
 }
 
 function unirLinhasQuebradas(linhas, usarCola) {
@@ -126,7 +135,6 @@ function unirLinhasQuebradas(linhas, usarCola) {
     return finais;
 }
 
-// Visualização Simples
 async function gerarPreview() {
     document.getElementById('previewDiv').style.display = 'block';
     const res = await extrairDadosGerais();
@@ -145,13 +153,10 @@ async function gerarPreview() {
     tbody.innerHTML = html;
 }
 
-// --- GERAÇÃO DO XLSX ---
 async function baixarXLSX() {
-    // Se o usuário esqueceu de clicar em "Salvar Planilha" mas tem dados na tela,
-    // pergunta se ele quer incluir a atual.
     if (regioes.length > 0 || document.querySelectorAll('.col-sep').length > 0) {
         if(confirm("Você tem uma configuração ativa na tela que não foi salva. Deseja incluí-la no Excel?")) {
-            await window.salvarPlanilhaAtual(); // Chama a função do UI.js via window
+            await window.salvarPlanilhaAtual(); 
         }
     }
 
@@ -160,25 +165,15 @@ async function baixarXLSX() {
         return;
     }
 
-    // Cria um novo Workbook
     var wb = XLSX.utils.book_new();
 
-    // Adiciona cada planilha salva ao arquivo
     planilhasSalvas.forEach(planilha => {
-        // Cria cabeçalho genérico (Coluna 1, Coluna 2...)
         let headers = [];
         for(let i=1; i <= planilha.colunas; i++) headers.push(`Coluna ${i}`);
-        
-        // Junta cabeçalho + dados
         let ws_data = [headers, ...planilha.dados];
-        
-        // Cria a Worksheet
         var ws = XLSX.utils.aoa_to_sheet(ws_data);
-        
-        // Adiciona ao Workbook
         XLSX.utils.book_append_sheet(wb, ws, planilha.nome);
     });
 
-    // Baixa o arquivo
     XLSX.writeFile(wb, "Extrato_MultiplasAbas.xlsx");
 }
