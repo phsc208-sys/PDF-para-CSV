@@ -1,19 +1,32 @@
 // --- INTERFACE DE USUÁRIO (UI) ---
 
-// 1. Renderiza o texto na tela (com filtro visual)
+// 1. FILTRO VISUAL
 function recalcularLinhas() {
     if (!itensPaginaAtual || itensPaginaAtual.length === 0) return;
     const tol = parseInt(document.getElementById('tolerancia').value);
     document.getElementById('tolVal').innerText = tol + "px";
 
-    // Filtra o que aparece na tela baseado nos limites
+    let mostrarTudo = regioes.length === 0;
+
     let itensFiltrados = itensPaginaAtual.filter(item => {
+        if (mostrarTudo) return true;
         const yVisual = (alturaPagina - item.y) * escala;
-        // Se o limite de Início for nesta página, esconde o que está acima
-        if (startMarker.pag === pagAtual && yVisual < (startMarker.y - 5)) return false;
-        // Se o limite de Fim for nesta página, esconde o que está abaixo
-        if (endMarker.pag === pagAtual && yVisual > (endMarker.y + 5)) return false;
-        return true;
+        let dentro = false;
+
+        for (let reg of regioes) {
+            let startOk = true; 
+            let endOk = true;
+            if (reg.inicio) {
+                if (pagAtual < reg.inicio.pag) startOk = false;
+                if (pagAtual === reg.inicio.pag && yVisual < (reg.inicio.y - 5)) startOk = false;
+            }
+            if (reg.fim) {
+                if (pagAtual > reg.fim.pag) endOk = false;
+                if (pagAtual === reg.fim.pag && yVisual > (reg.fim.y + 5)) endOk = false;
+            }
+            if (startOk && endOk) { dentro = true; break; }
+        }
+        return dentro;
     });
 
     itensFiltrados.sort((a,b) => b.y - a.y);
@@ -40,7 +53,6 @@ function desenharWorkspace(linhas) {
     const container = document.getElementById('page-container');
     if(!container) return;
 
-    // Salva elementos interativos (colunas e limites)
     const cols = document.querySelectorAll('.col-sep');
     const limits = document.querySelectorAll('.limit-line');
     
@@ -69,7 +81,7 @@ function desenharWorkspace(linhas) {
     });
 }
 
-// 2. Interação de Clique
+// 2. INTERAÇÃO E CLIQUES
 function ativarModo(modo) {
     modoFerramenta = modo;
     document.getElementById('btnTop').className = modo==='top' ? 'btn-tool active-top' : 'btn-tool';
@@ -77,43 +89,40 @@ function ativarModo(modo) {
 }
 
 function cliqueWorkspace(e) {
-    // Ignora clique em elementos já existentes
     if(e.target.classList.contains('col-sep') || e.target.classList.contains('limit-line')) return;
 
     const container = document.getElementById('page-container');
     if(!container) return;
+    const x = e.clientX - container.getBoundingClientRect().left;
+    const y = e.clientY - container.getBoundingClientRect().top;
 
-    const rect = container.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    // Modo Início
     if (modoFerramenta === 'top') {
-        startMarker = { pag: pagAtual, y: y };
+        let ultima = regioes.length > 0 ? regioes[regioes.length - 1] : null;
+        if (!ultima || (ultima.inicio && ultima.fim)) {
+            regioes.push({ id: regioes.length + 1, inicio: { pag: pagAtual, y: y }, fim: null });
+        } else {
+            ultima.inicio = { pag: pagAtual, y: y };
+        }
         modoFerramenta = null;
         document.getElementById('btnTop').className = 'btn-tool';
-        desenharLimites();
-        recalcularLinhas();
+        desenharLimites(); recalcularLinhas();
     } 
-    // Modo Fim
     else if (modoFerramenta === 'bottom') {
-        endMarker = { pag: pagAtual, y: y };
+        let ultima = regioes.length > 0 ? regioes[regioes.length - 1] : null;
+        if (ultima) {
+            ultima.fim = { pag: pagAtual, y: y };
+        } else {
+            alert("Defina o Início primeiro!");
+        }
         modoFerramenta = null;
         document.getElementById('btnBottom').className = 'btn-tool';
-        desenharLimites();
-        recalcularLinhas();
+        desenharLimites(); recalcularLinhas();
     } 
-    // Modo Coluna (Padrão)
     else {
-        // Proteção contra clique duplo (colunas muito perto)
-        let colunasExistem = document.querySelectorAll('.col-sep');
-        let muitoPerto = false;
-        colunasExistem.forEach(col => {
-            let colX = parseFloat(col.style.left);
-            if (Math.abs(colX - x) < 10) muitoPerto = true;
-        });
-
-        if (!muitoPerto) {
+        // Coluna (com proteção de duplo clique)
+        let perto = false;
+        document.querySelectorAll('.col-sep').forEach(c => { if(Math.abs(parseFloat(c.style.left)-x)<10) perto=true; });
+        if(!perto) {
             const l = document.createElement('div');
             l.className = 'col-sep'; l.style.left = x + "px";
             l.title = "Clique para remover";
@@ -126,33 +135,69 @@ function cliqueWorkspace(e) {
 function desenharLimites() {
     const container = document.getElementById('page-container');
     if(!container) return;
-
-    // Remove antigos
     document.querySelectorAll('.limit-line').forEach(e => e.remove());
 
-    if (startMarker.pag === pagAtual) {
-        let l = document.createElement('div');
-        l.className = 'limit-line limit-top';
-        l.style.top = startMarker.y + "px";
-        l.innerHTML = '<span class="limit-label">INÍCIO</span>';
-        l.onclick = (e) => { e.stopPropagation(); startMarker = {pag:null, y:-1}; desenharLimites(); recalcularLinhas(); };
-        container.appendChild(l);
+    regioes.forEach((reg, index) => {
+        if (reg.inicio && reg.inicio.pag === pagAtual) {
+            let l = document.createElement('div');
+            l.className = 'limit-line limit-top';
+            l.style.top = reg.inicio.y + "px";
+            l.innerHTML = `<span class="limit-tag" style="background:#27ae60">INÍCIO ${reg.id}</span>`;
+            l.onclick = (e) => { e.stopPropagation(); if(confirm("Apagar bloco?")) { regioes.splice(index,1); desenharLimites(); recalcularLinhas(); } };
+            container.appendChild(l);
+        }
+        if (reg.fim && reg.fim.pag === pagAtual) {
+            let l = document.createElement('div');
+            l.className = 'limit-line limit-bottom';
+            l.style.top = reg.fim.y + "px";
+            l.innerHTML = `<span class="limit-tag" style="background:#e74c3c">FIM ${reg.id}</span>`;
+            l.onclick = (e) => { e.stopPropagation(); if(confirm("Apagar bloco?")) { regioes.splice(index,1); desenharLimites(); recalcularLinhas(); } };
+            container.appendChild(l);
+        }
+    });
+}
+
+function limparTudo(limparRegioes = true) {
+    document.querySelectorAll('.col-sep').forEach(e => e.remove());
+    if (limparRegioes) regioes = [];
+    desenharLimites();
+    recalcularLinhas();
+}
+
+// --- FUNÇÃO DE SALVAR PLANILHA (NOVA) ---
+async function salvarPlanilhaAtual() {
+    // Extrai os dados da configuração atual
+    const dados = await extrairDadosGerais();
+    
+    if (!dados || dados.dados.length === 0) {
+        alert("A planilha atual está vazia ou não foi configurada corretamente.");
+        return;
     }
 
-    if (endMarker.pag === pagAtual) {
-        let l = document.createElement('div');
-        l.className = 'limit-line limit-bottom';
-        l.style.top = endMarker.y + "px";
-        l.innerHTML = '<span class="limit-label">FIM</span>';
-        l.onclick = (e) => { e.stopPropagation(); endMarker = {pag:null, y:99999}; desenharLimites(); recalcularLinhas(); };
-        container.appendChild(l);
+    const nome = prompt("Nome desta planilha (aba do Excel):", `Planilha ${planilhasSalvas.length + 1}`);
+    if (!nome) return;
+
+    // Salva na memória
+    planilhasSalvas.push({
+        nome: nome,
+        dados: dados.dados, // Matriz de dados
+        colunas: dados.numColunas
+    });
+
+    atualizarContadorPlanilhas();
+    
+    // Limpa a tela para a próxima planilha
+    if(confirm("Planilha salva! Deseja limpar a tela para configurar a próxima?")) {
+        limparTudo(true); // Limpa colunas e regiões
     }
 }
 
-function limparTudo() {
-    document.querySelectorAll('.col-sep').forEach(e => e.remove());
-    startMarker = { pag: null, y: -1 };
-    endMarker = { pag: null, y: 99999 };
-    desenharLimites();
-    recalcularLinhas();
+function atualizarContadorPlanilhas() {
+    const div = document.getElementById('contadorPlanilhas');
+    if (planilhasSalvas.length > 0) {
+        div.style.display = 'block';
+        div.innerText = `${planilhasSalvas.length} Planilha(s) Pronta(s)`;
+    } else {
+        div.style.display = 'none';
+    }
 }

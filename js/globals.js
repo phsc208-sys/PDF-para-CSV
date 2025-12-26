@@ -1,18 +1,20 @@
-// Configuração do Worker do PDF.js
+// Configuração do Worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
 
-// Variáveis de Estado Global
-var pdfDoc = null;          // O documento PDF carregado
-var pagAtual = 1;           // Página atual sendo visualizada
-var totalPags = 0;          // Total de páginas
-var escala = 1.3;           // Zoom da visualização
-var alturaPagina = 0;       // Altura em pixels da página atual
-var itensPaginaAtual = [];  // Cache dos textos da página atual (para desenhar na tela)
+// --- VARIÁVEIS GLOBAIS ---
+var pdfDoc = null;          
+var pagAtual = 1;           
+var totalPags = 0;          
+var escala = 1.3;           
+var alturaPagina = 0;       
+var itensPaginaAtual = [];  
 
-// Marcadores de Limite Global
-// Se pag === null, o limite não está ativo
-var startMarker = { pag: null, y: -1 }; 
-var endMarker = { pag: null, y: 99999 };
+// Controle de Múltiplos Blocos (Regiões) na Planilha Atual
+var regioes = []; 
 
-// Ferramenta Ativa na UI ('top', 'bottom' ou null)
+// LISTA DE PLANILHAS SALVAS (Para o Excel final)
+// Cada item será: { nome: "Planilha 1", dados: [matriz] }
+var planilhasSalvas = [];
+
+// Ferramenta Ativa
 var modoFerramenta = null;
